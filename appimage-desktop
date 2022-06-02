@@ -12,9 +12,9 @@ require fd
 
 # runs mkdir while inheriting the owner by looking at nearest parent dir that existed
 inherited_mkdir() {
-    nearest_non_existent=$(while read -rd '/' c && cd "$c" 2>/dev/null; do :; done <<< "$1"; echo $PWD/$c)
-    nearest_parent=$(dirname "$nearest_non_existent")
-    nearest_parent_owner=$(stat -c "%U:%G" "$nearest_parent")
+    local nearest_non_existent=$(while read -rd '/' c && cd "$c" 2>/dev/null; do :; done <<< "$1"; echo $PWD/$c)
+    local nearest_parent=$(dirname "$nearest_non_existent")
+    local nearest_parent_owner=$(stat -c "%U:%G" "$nearest_parent")
 
     mkdir -p "$1"
     chown -R $nearest_parent_owner $nearest_non_existent
@@ -23,6 +23,13 @@ inherited_mkdir() {
 # create or check entry for file exists & matches
 create_entry() {
     echo "cr $1"
+
+    local desktop_entry_dir=/usr/share/applications
+    local desktop_icons_dir=/usr/share/icons
+    mkdir -p $desktop_entry_dir
+    mkdir -p $desktop_icons_dir
+
+
 }
 
 # delete entry for file
@@ -61,7 +68,7 @@ while read -r line; do
 done < $CONF_FILE
 
 
-# Listen & add/remove entry
+# Listen & create/remove entry
 inotifywait -e create -e moved_to --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
 | while read dir action file; do
     create_entry "$dir$file"
