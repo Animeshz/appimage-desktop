@@ -1,0 +1,5 @@
+recursive=false
+
+absolute_path1
+absolute_path2  # comment
+absolute_path3  # if path doesn't exist, it'll be created

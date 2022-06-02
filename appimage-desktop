@@ -1,0 +1,80 @@
+#!/usr/bin/env bash
+
+# Creates desktop entries for AppImages on specified directories
+# Not as feature-rich as AppImageLauncer, but serves its purpose well to create desktop entries of AppImages
+
+
+require() {
+    command -v $1 &>/dev/null || { >&2 echo "$1 is required, and not present, exiting..."; exit 1; }
+}
+require inotifywait
+
+# runs mkdir while inheriting the owner by looking at nearest parent dir that existed
+inherited_mkdir() {
+    nearest_non_existent=$(while read -rd '/' c && cd "$c" 2>/dev/null; do :; done <<< "$1"; echo $PWD/$c)
+    nearest_parent=$(dirname "$nearest_non_existent")
+    nearest_parent_owner=$(stat -c "%U:%G" "$nearest_parent")
+
+    mkdir -p "$1"
+    chown -R $nearest_parent_owner $nearest_non_existent
+}
+
+# create or check entry for file exists & matches
+create_entry() {
+    echo "$1"
+}
+
+# delete entry for file
+remove_entry() {
+    echo "$1"
+}
+
+
+CONF_FILE=/etc/appimage-desktop.conf
+recursive_opt=
+watch_paths=
+listener_pids=
+manual_kill=false
+
+if [[ ! -r $CONF_FILE ]]; then
+    >&2 echo "$CONF_FILE does not exist or is not readable"
+    exit 2
+fi
+
+while read -r line; do
+    case "$line" in
+        recursive=true)
+            recursive_opt=-r;;
+        recursive=*)
+            recursive_opt=;;
+        '')
+            continue;;
+        *)
+            if [[ ! -d "$line" ]] && ! inherited_mkdir "$line"; then
+                >&2 echo "File $line exists but not a directory"
+                exit 3
+            fi
+            watch_paths="$watch_paths $line";;
+    esac
+done < $CONF_FILE
+
+
+inotifywait -e create -e moved_to --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
+| while read dir action file; do
+    create_entry "$file"
+done &
+listener_pids="$listener_pids $!"
+
+inotifywait -e delete -e moved_from --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
+| while read dir action file; do
+    remove_entry "$file"
+done &
+listener_pids="$listener_pids $!"
+
+
+# Exit as soon as any child process returns with non-zero exit code
+while [[ -n $(jobs -p) ]]; do
+     if ! wait -n < <(jobs -p); then
+         exit 1
+     fi
+done
