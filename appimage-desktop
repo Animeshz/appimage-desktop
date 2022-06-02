@@ -8,6 +8,7 @@ require() {
     command -v $1 &>/dev/null || { >&2 echo "$1 is required, and not present, exiting..."; exit 1; }
 }
 require inotifywait
+require fd
 
 # runs mkdir while inheriting the owner by looking at nearest parent dir that existed
 inherited_mkdir() {
@@ -32,6 +33,7 @@ remove_entry() {
 
 CONF_FILE=/etc/appimage-desktop.conf
 recursive_opt=
+depth_opt=
 watch_paths=
 
 if [[ ! -r $CONF_FILE ]]; then
@@ -42,9 +44,11 @@ fi
 while read -r line; do
     case "$line" in
         recursive=true)
-            recursive_opt=-r;;
+            recursive_opt=-r
+            depth_opt=;;
         recursive=*)
-            recursive_opt=;;
+            recursive_opt=
+            depth_opt=-d1;;
         '')
             continue;;
         *)
@@ -57,18 +61,29 @@ while read -r line; do
 done < $CONF_FILE
 
 
+# Listen & add/remove entry
 inotifywait -e create -e moved_to --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
 | while read dir action file; do
-    create_entry "$file"
+    create_entry "$dir$file"
 done &
 
 inotifywait -e delete -e moved_from --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
 | while read dir action file; do
-    remove_entry "$file"
+    remove_entry "$dir$file"
 done &
 
 
+# Create/check entry for all at start
+for path in $watch_paths; do
+    fd --absolute-path $depth_opt '.' "$path" \
+    | while read -r file; do
+        create_entry "$file"
+    done
+done
+
+
 trap 'kill $(jobs -p)' EXIT
+
 # Exit as soon as any child process returns with non-zero exit code
 while [[ -n $(jobs -p) ]]; do
      if ! wait -n < <(jobs -p); then
