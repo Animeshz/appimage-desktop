@@ -21,20 +21,18 @@ inherited_mkdir() {
 
 # create or check entry for file exists & matches
 create_entry() {
-    echo "$1"
+    echo "cr $1"
 }
 
 # delete entry for file
 remove_entry() {
-    echo "$1"
+    echo "rm $1"
 }
 
 
 CONF_FILE=/etc/appimage-desktop.conf
 recursive_opt=
 watch_paths=
-listener_pids=
-manual_kill=false
 
 if [[ ! -r $CONF_FILE ]]; then
     >&2 echo "$CONF_FILE does not exist or is not readable"
@@ -63,15 +61,14 @@ inotifywait -e create -e moved_to --include '.*\.AppImage' $recursive_opt -m $wa
 | while read dir action file; do
     create_entry "$file"
 done &
-listener_pids="$listener_pids $!"
 
 inotifywait -e delete -e moved_from --include '.*\.AppImage' $recursive_opt -m $watch_paths 2>/dev/null \
 | while read dir action file; do
     remove_entry "$file"
 done &
-listener_pids="$listener_pids $!"
 
 
+trap 'kill $(jobs -p)' EXIT
 # Exit as soon as any child process returns with non-zero exit code
 while [[ -n $(jobs -p) ]]; do
      if ! wait -n < <(jobs -p); then
